@@ -1,0 +1,113 @@
+{
+  "images" : [
+    {
+      "size" : "20x20",
+      "idiom" : "universal",
+      "filename" : "icon_20x20.png",
+      "scale" : "1x",
+      "platform" : "ios"
+    },
+    {
+      "size" : "20x20",
+      "idiom" : "universal",
+      "filename" : "icon_40x40.png",
+      "scale" : "2x",
+      "platform" : "ios"
+    },
+    {
+      "size" : "20x20",
+      "idiom" : "universal",
+      "filename" : "icon_60x60.png",
+      "scale" : "3x",
+      "platform" : "ios"
+    },
+    {
+      "size" : "29x29",
+      "idiom" : "universal",
+      "filename" : "icon_29x29.png",
+      "scale" : "1x",
+      "platform" : "ios"
+    },
+    {
+      "size" : "29x29",
+      "idiom" : "universal",
+      "filename" : "icon_58x58.png",
+      "scale" : "2x",
+      "platform" : "ios"
+    },
+    {
+      "size" : "29x29",
+      "idiom" : "universal",
+      "filename" : "icon_87x87.png",
+      "scale" : "3x",
+      "platform" : "ios"
+    },
+    {
+      "size" : "40x40",
+      "idiom" : "universal",
+      "filename" : "icon_40x40.png",
+      "scale" : "1x",
+      "platform" : "ios"
+    },
+    {
+      "size" : "40x40",
+      "idiom" : "universal",
+      "filename" : "icon_80x80.png",
+      "scale" : "2x",
+      "platform" : "ios"
+    },
+    {
+      "size" : "40x40",
+      "idiom" : "universal",
+      "filename" : "icon_120x120.png",
+      "scale" : "3x",
+      "platform" : "ios"
+    },
+    {
+      "size" : "60x60",
+      "idiom" : "universal",
+      "filename" : "icon_120x120.png",
+      "scale" : "2x",
+      "platform" : "ios"
+    },
+    {
+      "size" : "60x60",
+      "idiom" : "universal",
+      "filename" : "icon_180x180.png",
+      "scale" : "3x",
+      "platform" : "ios"
+    },
+    {
+      "size" : "76x76",
+      "idiom" : "universal",
+      "filename" : "icon_76x76.png",
+      "scale" : "1x",
+      "platform" : "ios"
+    },
+    {
+      "size" : "76x76",
+      "idiom" : "universal",
+      "filename" : "icon_152x152.png",
+      "scale" : "2x",
+      "platform" : "ios"
+    },
+    {
+      "size" : "83.5x83.5",
+      "idiom" : "universal",
+      "filename" : "icon_167x167.png",
+      "scale" : "2x",
+      "platform" : "ios"
+    },
+    {
+      "size" : "1024x1024",
+      "idiom" : "universal",
+      "filename" : "icon_1024x1024.png",
+      "scale" : "1x",
+      "platform" : "ios"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

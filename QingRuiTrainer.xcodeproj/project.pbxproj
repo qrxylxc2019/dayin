@@ -1,0 +1,276 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1A0000119C11000000000011 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A0000109C11000000000010 /* Assets.xcassets */; };
+		C87C37683031E8A700CD6371 /* SwiftMath in Frameworks */ = {isa = PBXBuildFile; productRef = 1APKG0020000000000002 /* SwiftMath */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		1A0000019C11000000000001 /* QingRuiTrainer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = QingRuiTrainer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1A0000109C11000000000010 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		1A0000029C11000000000002 /* QingRuiTrainer */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = QingRuiTrainer;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1A0000039C11000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C87C37683031E8A700CD6371 /* SwiftMath in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1A0000049C11000000000004 = {
+			isa = PBXGroup;
+			children = (
+				1A0000029C11000000000002 /* QingRuiTrainer */,
+				1A0000019C11000000000001 /* QingRuiTrainer.app */,
+				1A0000109C11000000000010 /* Assets.xcassets */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1A0000059C11000000000005 /* QingRuiTrainer */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1A0000069C11000000000006 /* Build configuration list for PBXNativeTarget "QingRuiTrainer" */;
+			buildPhases = (
+				1A0000079C11000000000007 /* Sources */,
+				1A0000039C11000000000003 /* Frameworks */,
+				1A0000089C11000000000008 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				1A0000029C11000000000002 /* QingRuiTrainer */,
+			);
+			name = QingRuiTrainer;
+			packageProductDependencies = (
+				1APKG0020000000000002 /* SwiftMath */,
+			);
+			productName = QingRuiTrainer;
+			productReference = 1A0000019C11000000000001 /* QingRuiTrainer.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		1A0000099C11000000000009 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					1A0000059C11000000000005 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+				};
+			};
+			buildConfigurationList = 1A00000A9C1100000000000A /* Build configuration list for PBXProject "QingRuiTrainer" */;
+			developmentRegion = "zh-Hans";
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				"zh-Hans",
+				Base,
+				en,
+			);
+			mainGroup = 1A0000049C11000000000004;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				1APKG0010000000000001 /* XCRemoteSwiftPackageReference "SwiftMath" */,
+			);
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1A0000059C11000000000005 /* QingRuiTrainer */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1A0000089C11000000000008 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1A0000119C11000000000011 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1A0000079C11000000000007 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1A00000B9C1100000000000B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = 0;
+				CLANG_ENABLE_MODULES = 1;
+				CLANG_ENABLE_OBJC_ARC = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = 1;
+				ENABLE_TESTABILITY = 1;
+				ENABLE_USER_SCRIPT_SANDBOXING = 1;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = 0;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = 1;
+				ONLY_ACTIVE_ARCH = 1;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		1A00000C9C1100000000000C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = 0;
+				CLANG_ENABLE_MODULES = 1;
+				CLANG_ENABLE_OBJC_ARC = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = 0;
+				ENABLE_STRICT_OBJC_MSGSEND = 1;
+				ENABLE_USER_SCRIPT_SANDBOXING = 1;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_FAST_MATH = 1;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = 1;
+			};
+			name = Release;
+		};
+		1A00000D9C1100000000000D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = JXPYX69H5G;
+				GENERATE_INFOPLIST_FILE = 1;
+				INFOPLIST_KEY_CFBundleDisplayName = "青瑞题库";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				INFOPLIST_KEY_UILaunchScreen_Generation = 1;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				"INFOPLIST_KEY_UISupportedInterfaceOrientations~ipad" = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.qingrui.trainer;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = 0;
+				SWIFT_EMIT_LOC_STRINGS = 1;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		1A00000E9C1100000000000E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = JXPYX69H5G;
+				GENERATE_INFOPLIST_FILE = 1;
+				INFOPLIST_KEY_CFBundleDisplayName = "青瑞题库";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				INFOPLIST_KEY_UILaunchScreen_Generation = 1;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				"INFOPLIST_KEY_UISupportedInterfaceOrientations~ipad" = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.qingrui.trainer;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = 0;
+				SWIFT_EMIT_LOC_STRINGS = 1;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1A0000069C11000000000006 /* Build configuration list for PBXNativeTarget "QingRuiTrainer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1A00000D9C1100000000000D /* Debug */,
+				1A00000E9C1100000000000E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1A00000A9C1100000000000A /* Build configuration list for PBXProject "QingRuiTrainer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1A00000B9C1100000000000B /* Debug */,
+				1A00000C9C1100000000000C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		1APKG0010000000000001 /* XCRemoteSwiftPackageReference "SwiftMath" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/mgriebling/SwiftMath.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.7.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1APKG0020000000000002 /* SwiftMath */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SwiftMath;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 1A0000099C11000000000009 /* Project object */;
+}
