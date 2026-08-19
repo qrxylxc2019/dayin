@@ -262,12 +262,27 @@ struct TrainingSettingsSheet: View {
             Form {
                 Section {
                     Toggle("显示左侧网页", isOn: $model.showWebPane)
-                    Picker("手写板模式", selection: $model.scribblePresentationMode) {
-                        ForEach(ScribblePresentationMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("手写板显示位置：")
+                        Picker("手写板显示位置", selection: $model.scribblePresentationMode) {
+                            ForEach(ScribblePresentationMode.allCases) { mode in
+                                Text(mode.title).tag(mode)
+                            }
                         }
+                        .pickerStyle(.segmented)
                     }
-                    .pickerStyle(.segmented)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("左侧网页：")
+                        Picker("左侧网页", selection: $model.aiWebSite) {
+                            ForEach(AIWebSite.allCases) { site in
+                                Text(site.name).tag(site)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
                     Stepper("题量：\(model.trainingCount) 题", value: $model.trainingCount, in: 1...100)
                     Toggle("乱序出题", isOn: $model.shuffle)
                 } header: {

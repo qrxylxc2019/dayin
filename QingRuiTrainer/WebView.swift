@@ -220,7 +220,7 @@ struct WebView: UIViewRepresentable {
 
 // MARK: - 左侧 AI 网页
 
-private enum AIWebSite: String, CaseIterable, Identifiable {
+enum AIWebSite: String, CaseIterable, Identifiable {
     case doubao
     case deepSeek
 
@@ -244,32 +244,14 @@ private enum AIWebSite: String, CaseIterable, Identifiable {
 struct WebPane: View {
     @Environment(AppModel.self) private var model
 
-    @State private var selectedSite: AIWebSite = .deepSeek
     @State private var displayUrl = "https://chat.deepseek.com/"
     @State private var loadToken = UUID()
 
     var body: some View {
         VStack(spacing: 0) {
-            // AI 网页下拉选择
-            HStack(spacing: 8) {
-                Image(systemName: "globe.asia.australia")
-                    .foregroundStyle(.secondary)
-                Picker("选择 AI 网页", selection: $selectedSite) {
-                    ForEach(AIWebSite.allCases) { site in
-                        Text(site.name).tag(site)
-                    }
-                }
-                .pickerStyle(.menu)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(10)
-
-            Divider()
-
-            // 网页
             GeometryReader { geometry in
                 WebView(
-                    url: selectedSite.url,
+                    url: model.aiWebSite.url,
                     currentUrl: $displayUrl,
                     promptRequest: model.webPromptRequest
                 ) { _ in }
@@ -280,7 +262,10 @@ struct WebPane: View {
             .clipped()
             .ignoresSafeArea(.container, edges: .bottom)
         }
-        .onChange(of: selectedSite) { _, site in
+        .onAppear {
+            displayUrl = model.aiWebSite.url.absoluteString
+        }
+        .onChange(of: model.aiWebSite) { _, site in
             displayUrl = site.url.absoluteString
             loadToken = UUID()
         }

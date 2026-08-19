@@ -189,15 +189,8 @@ struct ScribbleBoardSheet: View {
     private func addPage() {
         let newPage = ScribbleCanvasView()
         applyTool(to: newPage)
-        transitionDirection = .next
         let insertIndex = min(workspace.pageIndex + 1, workspace.pages.count)
-        withAnimation(pageAnimation) {
-            workspace.pages.insert(newPage, at: insertIndex)
-            workspace.pageIndex = insertIndex
-        }
-        if pageLayout == .vertical {
-            verticalScrollTarget = ObjectIdentifier(newPage)
-        }
+        workspace.pages.insert(newPage, at: insertIndex)
     }
 
     private func applyTool(to canvas: PKCanvasView) {

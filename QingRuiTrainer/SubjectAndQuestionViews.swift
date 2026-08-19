@@ -36,6 +36,15 @@ final class AppModel {
         didSet { UserDefaults.standard.set(showWebPane, forKey: "cc.showWebPane") }
     }
 
+    var aiWebSite: AIWebSite {
+        didSet {
+            UserDefaults.standard.set(
+                aiWebSite.rawValue,
+                forKey: "cc.aiWebSite"
+            )
+        }
+    }
+
     var scribblePresentationMode: ScribblePresentationMode {
         didSet {
             UserDefaults.standard.set(
@@ -47,6 +56,9 @@ final class AppModel {
 
     init() {
         subjects = Database.shared.subjects()
+        aiWebSite = AIWebSite(
+            rawValue: UserDefaults.standard.string(forKey: "cc.aiWebSite") ?? ""
+        ) ?? .deepSeek
         scribblePresentationMode = ScribblePresentationMode(
             rawValue: UserDefaults.standard.string(forKey: "cc.scribblePresentationMode") ?? ""
         ) ?? .fullScreen
