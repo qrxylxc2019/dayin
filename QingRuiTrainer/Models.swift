@@ -23,6 +23,7 @@ struct Question: Identifiable, Hashable {
     let explanation: String?
     let aiExplanation: String?
     let source: String?
+    var isWrong: Bool = false
 
     var typeLabel: String {
         switch questionType {

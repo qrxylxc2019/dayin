@@ -133,6 +133,8 @@ struct SubjectPane: View {
     @State private var fullScreenScribbleQuestion: Question?
     @State private var scribbleWorkspace = ScribbleWorkspace()
     @State private var emptySubject: String?
+    @State private var wrongOnlyMode = false
+    @State private var deleteQuestionCandidate: Question?
 
     var body: some View {
         ZStack {
@@ -142,12 +144,33 @@ struct SubjectPane: View {
                 }
                 .navigationDestination(item: $sessionBox) { box in
                     QuizRunnerView(session: box.session) {
-                        makeQuestions()   // 一组做完按当前设置继续新一组
+                        makeQuestions(wrongOnly: wrongOnlyMode)   // 一组做完按当前设置继续新一组
                     } onAdvance: {
                         scribbleWorkspace.reset()
                     }
                     .toolbar {
                         ToolbarItemGroup(placement: .topBarTrailing) {
+                            if supportsQuestionManagement {
+                                Button {
+                                    toggleWrongOnly(for: box.session)
+                                } label: {
+                                    Label(
+                                        wrongOnlyMode ? "显示全部题" : "只看错题",
+                                        systemImage: wrongOnlyMode
+                                            ? "exclamationmark.circle.fill"
+                                            : "exclamationmark.circle"
+                                    )
+                                }
+                                .tint(wrongOnlyMode ? CCTheme.bad : CCTheme.accent)
+
+                                Button(role: .destructive) {
+                                    deleteQuestionCandidate = box.session.current
+                                } label: {
+                                    Label("删除当前题", systemImage: "trash")
+                                }
+                                .disabled(box.session.current == nil)
+                            }
+
                             Button {
                                 showScribbleBoard(for: box.session.current)
                             } label: {
@@ -186,6 +209,21 @@ struct SubjectPane: View {
                     set: { if !$0 { emptySubject = nil } }
                 )) {
                     Button("好", role: .cancel) {}
+                } message: {
+                    Text(emptySubject ?? "")
+                }
+                .alert("删除这道题？", isPresented: Binding(
+                    get: { deleteQuestionCandidate != nil },
+                    set: { if !$0 { deleteQuestionCandidate = nil } }
+                )) {
+                    Button("删除", role: .destructive) {
+                        deleteCurrentManagedQuestion()
+                    }
+                    Button("取消", role: .cancel) {
+                        deleteQuestionCandidate = nil
+                    }
+                } message: {
+                    Text("删除后会从本机题库数据库中移除，当前训练列表也会同步去掉。")
                 }
             }
 
@@ -220,6 +258,7 @@ struct SubjectPane: View {
     private func startTraining(_ subject: Subject) {
         scribbleWorkspace.reset()
         model.currentSubject = subject
+        wrongOnlyMode = false
 
         switch subject.name.trimmingCharacters(in: .whitespacesAndNewlines) {
         case "考研英语":
@@ -237,16 +276,62 @@ struct SubjectPane: View {
 
         let qs = makeQuestions()
         guard !qs.isEmpty else { emptySubject = subject.name; return }
-        sessionBox = SessionBox(session: QuizSession(questions: qs, title: subject.name))
+        sessionBox = SessionBox(session: configuredSession(questions: qs, title: subject.name))
     }
 
     /// 按当前训练设置（题量 / 乱序）从当前科目出题
-    private func makeQuestions() -> [Question] {
+    private func makeQuestions(wrongOnly: Bool = false) -> [Question] {
         guard let subject = model.currentSubject else { return [] }
-        let (items, _) = Database.shared.questions(directoryId: subject.id, limit: 200)
+        let (items, _) = Database.shared.questions(
+            directoryId: subject.id,
+            limit: 200,
+            wrongOnly: wrongOnly
+        )
         var qs = items
         if model.shuffle { qs.shuffle() }
         return Array(qs.prefix(model.trainingCount))
+    }
+
+    private var supportsQuestionManagement: Bool {
+        guard let name = model.currentSubject?.name.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return false
+        }
+        return name == "考研数学" || name == "考研政治"
+    }
+
+    private func configuredSession(questions: [Question], title: String) -> QuizSession {
+        let session = QuizSession(questions: questions, title: title)
+        if supportsQuestionManagement {
+            session.onWrongAnswer = { question in
+                Database.shared.setQuestionWrong(id: question.id, isWrong: true)
+            }
+        }
+        return session
+    }
+
+    private func toggleWrongOnly(for session: QuizSession) {
+        let nextMode = !wrongOnlyMode
+        let qs = makeQuestions(wrongOnly: nextMode)
+        if nextMode && qs.isEmpty {
+            emptySubject = "当前科目暂无错题"
+            return
+        }
+        wrongOnlyMode = nextMode
+        scribbleWorkspace.reset()
+        session.replaceQuestions(qs)
+    }
+
+    private func deleteCurrentManagedQuestion() {
+        guard supportsQuestionManagement,
+              let question = deleteQuestionCandidate,
+              Database.shared.deleteQuestion(id: question.id) else {
+            deleteQuestionCandidate = nil
+            return
+        }
+        deleteQuestionCandidate = nil
+        model.reloadSubjects()
+        scribbleWorkspace.reset()
+        sessionBox?.session.removeCurrentQuestion()
     }
 }
 

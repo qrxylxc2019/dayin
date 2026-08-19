@@ -21,6 +21,8 @@ final class QuizSession {
     /// 已排除（删除）的选项：置灰禁用 + 删除线
     var eliminated: Set<String> = []
 
+    var onWrongAnswer: ((Question) -> Void)?
+
     var finished: Bool { index >= questions.count }
 
     init(questions: [Question], title: String) {
@@ -56,6 +58,10 @@ final class QuizSession {
     private func judge(_ q: Question) {
         let user = selection.sorted().joined()
         let correct = !user.isEmpty && Set(user.map(String.init)) == q.correctKeys
+        if !user.isEmpty && !correct {
+            questions[index].isWrong = true
+            onWrongAnswer?(q)
+        }
         if answers.count > index {
             answers[index] = user
             results[index] = correct
@@ -90,6 +96,31 @@ final class QuizSession {
         submitted = false
         selection = []
         eliminated = []
+    }
+
+    func replaceQuestions(_ newQuestions: [Question]) {
+        questions = newQuestions
+        index = 0
+        answers = []
+        results = []
+        submitted = false
+        selection = []
+        eliminated = []
+    }
+
+    func removeCurrentQuestion() {
+        guard questions.indices.contains(index) else { return }
+        questions.remove(at: index)
+        if answers.indices.contains(index) { answers.remove(at: index) }
+        if results.indices.contains(index) { results.remove(at: index) }
+        if index >= questions.count {
+            index = max(questions.count - 1, 0)
+        }
+        submitted = false
+        selection = []
+        eliminated = []
+        totalCorrect = results.filter { $0 }.count
+        totalAnswered = results.count
     }
 
     /// 一组结束：按规则载入新一组
@@ -146,6 +177,13 @@ struct QuizRunnerView: View {
     var body: some View {
         if let q = session.current {
             questionView(q)
+        } else {
+            ContentUnavailableView(
+                "暂无题目",
+                systemImage: "tray",
+                description: Text("当前规则下没有可练习的题目。")
+            )
+            .background(CCTheme.bg.ignoresSafeArea())
         }
     }
 

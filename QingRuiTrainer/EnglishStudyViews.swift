@@ -4,6 +4,28 @@ import PencilKit
 
 // MARK: - 考研英语阅读
 
+private enum ReadingInteractionMode {
+    case writing, fingerSelection
+
+    var icon: String {
+        switch self {
+        case .writing: "pencil.tip"
+        case .fingerSelection: "hand.point.up.left.fill"
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .writing: "当前为笔写模式，切换为手指选词模式"
+        case .fingerSelection: "当前为手指选词模式，切换为笔写模式"
+        }
+    }
+
+    mutating func toggle() {
+        self = self == .writing ? .fingerSelection : .writing
+    }
+}
+
 struct EnglishReadingView: View {
     @Environment(AppModel.self) private var model
 
@@ -14,11 +36,14 @@ struct EnglishReadingView: View {
     @State private var materialIndex = 0
     @State private var selectedAnswers: [Int: String] = [:]
     @State private var excludedOptions: Set<String> = []
-    @State private var materialFontSize: Double = 20
+    @State private var materialFontSize: Double = 22
     @State private var materialRatio: CGFloat = 0.6
     @State private var materialCanvas = PKCanvasView()
     @State private var materialDrawings: [Int: PKDrawing] = [:]
     @State private var materialContentHeight: CGFloat = 0
+    @State private var readingMode: ReadingInteractionMode = .writing
+    @State private var selectedMaterialAnchor: Int?
+    @State private var selectedMaterialRange: ClosedRange<Int>?
 
     var body: some View {
         Group {
@@ -109,29 +134,40 @@ struct EnglishReadingView: View {
                 Spacer(minLength: 4)
 
                 Button {
-                    materialCanvas.undoManager?.undo()
+                    readingMode.toggle()
+                    clearMaterialSelection()
                 } label: {
-                    Image(systemName: "arrow.uturn.backward")
+                    Image(systemName: readingMode.icon)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("撤销材料笔迹")
+                .accessibilityLabel(readingMode.accessibilityLabel)
 
-                Button {
-                    materialCanvas.undoManager?.redo()
-                } label: {
-                    Image(systemName: "arrow.uturn.forward")
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("重做材料笔迹")
+                if readingMode == .writing {
+                    Button {
+                        materialCanvas.undoManager?.undo()
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("撤销材料笔迹")
 
-                Button(role: .destructive) {
-                    materialCanvas.drawing = PKDrawing()
-                    materialDrawings[material.id] = PKDrawing()
-                } label: {
-                    Image(systemName: "trash")
+                    Button {
+                        materialCanvas.undoManager?.redo()
+                    } label: {
+                        Image(systemName: "arrow.uturn.forward")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("重做材料笔迹")
+
+                    Button(role: .destructive) {
+                        materialCanvas.drawing = PKDrawing()
+                        materialDrawings[material.id] = PKDrawing()
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("清空材料笔迹")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("清空材料笔迹")
 
                 Image(systemName: "textformat.size")
                     .font(.caption)
@@ -152,12 +188,25 @@ struct EnglishReadingView: View {
             GeometryReader { geometry in
                 ScrollView {
                     ZStack(alignment: .topLeading) {
-                        MarkdownMathText(
-                            raw: relaxedMaterialText(material.content),
-                            fontSize: CGFloat(materialFontSize),
-                            lineSpacing: max(7, CGFloat(materialFontSize) * 0.5),
-                            blockSpacing: 16
-                        )
+                        Group {
+                            if readingMode == .fingerSelection {
+                                SelectableReadingMaterialText(
+                                    raw: material.content,
+                                    fontSize: CGFloat(materialFontSize),
+                                    lineSpacing: max(7, CGFloat(materialFontSize) * 0.5),
+                                    blockSpacing: 16,
+                                    selectedRange: selectedMaterialRange,
+                                    onTokenTap: handleMaterialTokenTap
+                                )
+                            } else {
+                                MarkdownMathText(
+                                    raw: relaxedMaterialText(material.content),
+                                    fontSize: CGFloat(materialFontSize),
+                                    lineSpacing: max(7, CGFloat(materialFontSize) * 0.5),
+                                    blockSpacing: 16
+                                )
+                            }
+                        }
                         .foregroundStyle(CCTheme.textMain)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 14)
@@ -171,13 +220,26 @@ struct EnglishReadingView: View {
                             }
                         }
 
-                        MaterialPencilCanvas(canvasView: materialCanvas)
-                            .frame(height: max(materialContentHeight, geometry.size.height))
+                        if readingMode == .writing {
+                            MaterialPencilCanvas(canvasView: materialCanvas)
+                                .frame(height: max(materialContentHeight, geometry.size.height))
+                        }
                     }
                     .frame(minHeight: geometry.size.height, alignment: .top)
                 }
                 .onPreferenceChange(MaterialContentHeightKey.self) { height in
                     materialContentHeight = max(height, geometry.size.height)
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if readingMode == .fingerSelection,
+                       let selectedText = selectedMaterialText(in: material) {
+                        SelectedMaterialFloatingPanel(
+                            selectedText: selectedText,
+                            onClear: clearMaterialSelection,
+                            onSend: { sendSelectedMaterialText(selectedText, material: material) }
+                        )
+                        .padding(14)
+                    }
                 }
             }
             .id("material-\(material.id)")
@@ -320,6 +382,55 @@ struct EnglishReadingView: View {
         return value.isEmpty ? "阅读材料 \(materialIndex + 1)" : value
     }
 
+    private func handleMaterialTokenTap(_ index: Int) {
+        if let range = selectedMaterialRange,
+           range.lowerBound == range.upperBound,
+           let anchor = selectedMaterialAnchor,
+           anchor != index {
+            selectedMaterialRange = min(anchor, index)...max(anchor, index)
+        } else {
+            selectedMaterialAnchor = index
+            selectedMaterialRange = index...index
+        }
+    }
+
+    private func clearMaterialSelection() {
+        selectedMaterialAnchor = nil
+        selectedMaterialRange = nil
+    }
+
+    private func selectedMaterialText(in material: EnglishReadingMaterial) -> String? {
+        guard let range = selectedMaterialRange else { return nil }
+        let selected = ReadingMaterialToken.flatTokens(from: material.content)
+            .filter { range.contains($0.index) && $0.isSelectable }
+            .map(\.promptText)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return selected.isEmpty ? nil : selected
+    }
+
+    private func sendSelectedMaterialText(_ selectedText: String,
+                                          material: EnglishReadingMaterial) {
+        let prompt = """
+        请作为考研英语阅读老师，讲解我在阅读材料中选中的英文内容。
+
+        【选中内容】
+        \(selectedText)
+
+        【所在阅读材料】
+        \(material.content)
+
+        请用中文精炼但具体地回答：
+        1. 逐词或短语释义、词性和常见搭配
+        2. 在本文语境中的准确含义
+        3. 是否涉及熟词僻义、指代、转折或长难句关系
+        4. 考研阅读中容易误解的点
+        """
+        model.requestWebPrompt(prompt)
+        clearMaterialSelection()
+    }
+
     private func relaxedMaterialText(_ text: String) -> String {
         text.replacingOccurrences(of: " ", with: " \u{2009}")
     }
@@ -335,6 +446,7 @@ struct EnglishReadingView: View {
             materialDrawings[material.id] = materialCanvas.drawing
         }
         materialContentHeight = 0
+        clearMaterialSelection()
         withAnimation(.easeInOut(duration: 0.2)) {
             materialIndex = next
         }
@@ -353,6 +465,148 @@ struct EnglishReadingView: View {
         if #available(iOS 18.0, *) {
             materialCanvas.isDrawingEnabled = true
         }
+    }
+}
+
+private struct ReadingMaterialToken: Identifiable {
+    let index: Int
+    let text: String
+    let isSelectable: Bool
+
+    var id: Int { index }
+
+    var promptText: String {
+        text.trimmingCharacters(
+            in: CharacterSet(charactersIn: ".,;:!?()[]{}\"“”‘’")
+        )
+    }
+
+    static func flatTokens(from raw: String) -> [ReadingMaterialToken] {
+        paragraphTokens(from: raw).flatMap { $0 }
+    }
+
+    static func paragraphTokens(from raw: String) -> [[ReadingMaterialToken]] {
+        let lines = raw
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+        var nextIndex = 0
+
+        return lines.compactMap { line in
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+
+            let parts = trimmed.split { $0.isWhitespace }.map(String.init)
+            let tokens = parts.map { part in
+                let token = ReadingMaterialToken(
+                    index: nextIndex,
+                    text: part,
+                    isSelectable: part.rangeOfCharacter(from: .letters) != nil
+                )
+                nextIndex += 1
+                return token
+            }
+            return tokens.isEmpty ? nil : tokens
+        }
+    }
+}
+
+private struct SelectableReadingMaterialText: View {
+    let raw: String
+    let fontSize: CGFloat
+    let lineSpacing: CGFloat
+    let blockSpacing: CGFloat
+    let selectedRange: ClosedRange<Int>?
+    let onTokenTap: (Int) -> Void
+
+    private var paragraphs: [[ReadingMaterialToken]] {
+        ReadingMaterialToken.paragraphTokens(from: raw)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: blockSpacing) {
+            ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, tokens in
+                FlowLayout(spacing: 4) {
+                    ForEach(tokens) { token in
+                        tokenView(token)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func tokenView(_ token: ReadingMaterialToken) -> some View {
+        let selected = selectedRange?.contains(token.index) == true
+        if token.isSelectable {
+            Button {
+                onTokenTap(token.index)
+            } label: {
+                Text(token.text)
+                    .font(.system(size: fontSize))
+                    .lineSpacing(lineSpacing)
+                    .padding(.horizontal, 3)
+                    .padding(.vertical, 2)
+                    .foregroundStyle(selected ? Color.white : CCTheme.textMain)
+                    .background(
+                        selected ? CCTheme.accent : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 4)
+                    )
+            }
+            .buttonStyle(.plain)
+        } else {
+            Text(token.text)
+                .font(.system(size: fontSize))
+                .lineSpacing(lineSpacing)
+                .padding(.horizontal, 3)
+                .padding(.vertical, 2)
+        }
+    }
+}
+
+private struct SelectedMaterialFloatingPanel: View {
+    let selectedText: String
+    let onClear: () -> Void
+    let onSend: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(selectedText)
+                .font(.subheadline.weight(.medium))
+                .lineLimit(1)
+                .foregroundStyle(CCTheme.textMain)
+                .frame(maxWidth: 260, alignment: .leading)
+
+            Button {
+                onClear()
+            } label: {
+                Image(systemName: "xmark")
+                    .frame(width: 30, height: 30)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("清除选词")
+
+            Button {
+                onSend()
+            } label: {
+                Label("发送", systemImage: "paperplane.fill")
+                    .labelStyle(.iconOnly)
+                    .frame(width: 34, height: 30)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(CCTheme.accent)
+            .accessibilityLabel("发送选中内容到左侧网页")
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, 8)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: Capsule())
+        .overlay {
+            Capsule().strokeBorder(CCTheme.border, lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 6)
     }
 }
 
@@ -419,6 +673,7 @@ private struct MaterialPencilCanvas: UIViewRepresentable {
         canvas.isScrollEnabled = false
         canvas.isUserInteractionEnabled = true
         canvas.drawingGestureRecognizer.isEnabled = true
+        canvas.tool = PKInkingTool(.pen, color: .systemRed, width: 5)
         canvas.drawingGestureRecognizer.allowedTouchTypes = [
             NSNumber(value: UITouch.TouchType.pencil.rawValue)
         ]
@@ -437,6 +692,25 @@ private enum WordStudyMode: String, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
+private enum FlashCardDirection {
+    case previous, next
+
+    var transition: AnyTransition {
+        switch self {
+        case .previous:
+            .asymmetric(
+                insertion: .move(edge: .leading).combined(with: .opacity),
+                removal: .move(edge: .trailing).combined(with: .opacity)
+            )
+        case .next:
+            .asymmetric(
+                insertion: .move(edge: .trailing).combined(with: .opacity),
+                removal: .move(edge: .leading).combined(with: .opacity)
+            )
+        }
+    }
+}
+
 struct EnglishWordView: View {
     @Environment(AppModel.self) private var model
 
@@ -448,6 +722,7 @@ struct EnglishWordView: View {
     @State private var searchText = ""
     @State private var page = 1
     @State private var flashIndex = 0
+    @State private var flashCardDirection: FlashCardDirection = .next
 
     var body: some View {
         VStack(spacing: 0) {
@@ -524,7 +799,6 @@ struct EnglishWordView: View {
                 Toggle("显示释义", isOn: $showMeaning)
                     .toggleStyle(.switch)
                     .font(.subheadline)
-                    .disabled(studyMode == .flash)
             }
         }
         .padding(.horizontal, 14)
@@ -640,11 +914,13 @@ struct EnglishWordView: View {
                         Text(word.phonetic)
                             .font(.title3)
                             .foregroundStyle(CCTheme.textSub)
-                        Text(word.meaning)
+                        Text(showMeaning ? word.meaning : " ")
                             .font(.headline)
                             .foregroundStyle(CCTheme.textMain)
                             .multilineTextAlignment(.center)
                             .lineLimit(3)
+                            .frame(minHeight: 72, alignment: .top)
+                            .opacity(showMeaning ? 1 : 0)
                         Spacer(minLength: 0)
                     }
                     .padding(20)
@@ -655,10 +931,7 @@ struct EnglishWordView: View {
                             .strokeBorder(CCTheme.border, lineWidth: 1)
                     }
                     .id(word.id)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .move(edge: .leading).combined(with: .opacity)
-                    ))
+                    .transition(flashCardDirection.transition)
                 }
                 .padding(.horizontal, 18)
             }
@@ -751,6 +1024,7 @@ struct EnglishWordView: View {
     private func changePage(by offset: Int) {
         let next = page + offset
         guard (1...totalPages).contains(next) else { return }
+        flashCardDirection = offset < 0 ? .previous : .next
         withAnimation(.easeInOut(duration: 0.2)) {
             page = next
             flashIndex = 0
@@ -759,6 +1033,7 @@ struct EnglishWordView: View {
 
     private func advanceFlash() {
         guard !pageWords.isEmpty else { return }
+        flashCardDirection = .next
         withAnimation(.easeInOut(duration: 0.28)) {
             flashIndex = (flashIndex + 1) % pageWords.count
         }
@@ -766,6 +1041,7 @@ struct EnglishWordView: View {
 
     private func previousFlash() {
         guard !pageWords.isEmpty else { return }
+        flashCardDirection = .previous
         withAnimation(.easeInOut(duration: 0.28)) {
             flashIndex = (flashIndex - 1 + pageWords.count) % pageWords.count
         }
@@ -792,6 +1068,8 @@ struct EnglishTranslationView: View {
     @State private var userAnswer = ""
     @State private var showResult = false
     @State private var copied = false
+    @State private var translationCanvas = PKCanvasView()
+    @State private var translationDrawings: [Int: PKDrawing] = [:]
     @State private var showAddSheet = false
     @State private var showDeleteConfirmation = false
     @State private var newContent = ""
@@ -908,7 +1186,7 @@ struct EnglishTranslationView: View {
                     .foregroundStyle(CCTheme.textMain)
                 Spacer()
                 Button {
-                    UIPasteboard.general.string = item.content
+                    model.requestWebPrompt(aiTranslationPrompt(for: item))
                     copied = true
                     Task {
                         try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -919,7 +1197,7 @@ struct EnglishTranslationView: View {
                         .frame(width: 30, height: 30)
                 }
                 .buttonStyle(.bordered)
-                .accessibilityLabel(copied ? "已复制" : "复制英文原文")
+                .accessibilityLabel(copied ? "已发送" : "发送英文原文到左侧网页")
             }
 
             Text(item.content)
@@ -939,9 +1217,44 @@ struct EnglishTranslationView: View {
 
     private func answerCard(_ item: EnglishTranslationItem) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("你的翻译", systemImage: "square.and.pencil")
-                .font(.headline)
-                .foregroundStyle(CCTheme.textMain)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Label("手写板", systemImage: "pencil.tip")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CCTheme.textSub)
+                    Spacer()
+                    Button {
+                        translationCanvas.undoManager?.undo()
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("撤销翻译手写笔迹")
+
+                    Button(role: .destructive) {
+                        translationCanvas.drawing = PKDrawing()
+                        if let item = currentItem {
+                            translationDrawings[item.id] = PKDrawing()
+                        }
+                    } label: {
+                        Image(systemName: "trash")
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("清空翻译手写笔迹")
+                }
+
+                MaterialPencilCanvas(canvasView: translationCanvas)
+                    .frame(height: 220)
+                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(CCTheme.border, lineWidth: 1)
+                    }
+                    .allowsHitTesting(!showResult)
+                    .opacity(showResult ? 0.55 : 1)
+            }
 
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $userAnswer)
@@ -1074,17 +1387,52 @@ struct EnglishTranslationView: View {
         items = Array(loaded.prefix(max(model.trainingCount, 1)))
         currentIndex = 0
         resetAnswer()
+        loadTranslationDrawingForCurrentItem()
     }
 
     private func move(by offset: Int) {
         guard !items.isEmpty else { return }
+        saveCurrentTranslationDrawing()
         currentIndex = (currentIndex + offset + items.count) % items.count
         resetAnswer()
+        loadTranslationDrawingForCurrentItem()
     }
 
-    private func resetAnswer() {
+    private func resetAnswer(clearHandwriting: Bool = true) {
         userAnswer = ""
         showResult = false
+        if clearHandwriting {
+            translationCanvas.drawing = PKDrawing()
+        }
+    }
+
+    private func saveCurrentTranslationDrawing() {
+        guard let item = currentItem else { return }
+        translationDrawings[item.id] = translationCanvas.drawing
+    }
+
+    private func loadTranslationDrawingForCurrentItem() {
+        guard let item = currentItem else {
+            translationCanvas.drawing = PKDrawing()
+            return
+        }
+        translationCanvas.drawing = translationDrawings[item.id] ?? PKDrawing()
+    }
+
+    private func aiTranslationPrompt(for item: EnglishTranslationItem) -> String {
+        """
+        请作为资深英语翻译老师，帮我翻译并讲解下面这段英文材料。
+
+        【英文材料】
+        \(item.content)
+
+        请严格按以下结构回答：
+        1. 先给出自然、准确、适合中文表达习惯的完整译文。
+        2. 分析句子主干、从句、修饰成分和逻辑关系。
+        3. 讲解重点词汇、短语、固定搭配和可能的熟词僻义。
+        4. 标出翻译时容易误解的地方，并说明如何避免。
+        5. 最后给一个更贴近考试答案风格的精炼译文。
+        """
     }
 
     private func normalized(_ text: String) -> String {
@@ -1109,16 +1457,19 @@ struct EnglishTranslationView: View {
         items.append(item)
         currentIndex = items.count - 1
         resetAnswer()
+        loadTranslationDrawingForCurrentItem()
         showAddSheet = false
     }
 
     private func deleteCurrentItem() {
         guard let item = currentItem,
               Database.shared.deleteEnglishTranslation(id: item.id) else { return }
+        translationDrawings[item.id] = nil
         items.remove(at: currentIndex)
         if currentIndex >= items.count {
             currentIndex = max(items.count - 1, 0)
         }
         resetAnswer()
+        loadTranslationDrawingForCurrentItem()
     }
 }

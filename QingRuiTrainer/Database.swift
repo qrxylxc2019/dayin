@@ -42,6 +42,7 @@ final class Database {
             return
         }
 
+        ensureQuestionWrongFlagColumn()
         migrateEnglishStudyDataIfNeeded()
     }
 
@@ -69,6 +70,27 @@ final class Database {
             return false
         }
         return true
+    }
+
+    private func table(_ table: String, hasColumn column: String) -> Bool {
+        guard let handle else { return false }
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, "PRAGMA table_info(\(table))", -1, &stmt, nil) == SQLITE_OK else {
+            return false
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if columnText(stmt, 1) == column { return true }
+        }
+        return false
+    }
+
+    private func ensureQuestionWrongFlagColumn() {
+        if !table("questions", hasColumn: "is_wrong") {
+            _ = execute("ALTER TABLE questions ADD COLUMN is_wrong INT DEFAULT 0")
+        }
+        _ = execute("CREATE INDEX IF NOT EXISTS idx_q_wrong ON questions(is_wrong)")
     }
 
     /// 覆盖安装时 Documents 中会保留旧数据库，因此需从新 Bundle 合并专项英语数据。
@@ -265,7 +287,8 @@ final class Database {
     func questions(directoryId: Int? = nil,
                    search: String = "",
                    limit: Int = 50,
-                   offset: Int = 0) -> (items: [Question], total: Int) {
+                   offset: Int = 0,
+                   wrongOnly: Bool = false) -> (items: [Question], total: Int) {
         guard let handle else { return ([], 0) }
 
         var conditions: [String] = []
@@ -293,6 +316,9 @@ final class Database {
             conditions.append("q.title LIKE ?")
             params.append("%\(kw)%")
         }
+        if wrongOnly {
+            conditions.append("COALESCE(q.is_wrong, 0) = 1")
+        }
         let whereSQL = conditions.isEmpty ? "" : "WHERE " + conditions.joined(separator: " AND ")
 
         // 总数
@@ -311,7 +337,8 @@ final class Database {
         let sql = """
         SELECT q.id, q.directory_id, q.question_type, q.title,
                q.option_a, q.option_b, q.option_c, q.option_d, q.option_e,
-               q.correct_answer, q.explanation, q.ai_explanation, q.source
+               q.correct_answer, q.explanation, q.ai_explanation, q.source,
+               COALESCE(q.is_wrong, 0)
         FROM questions q \(whereSQL)
         ORDER BY q.directory_id, q.sort_order, q.id
         LIMIT ? OFFSET ?
@@ -340,10 +367,48 @@ final class Database {
                 correctAnswer: columnText(stmt, 9),
                 explanation: columnOptionalText(stmt, 10),
                 aiExplanation: columnOptionalText(stmt, 11),
-                source: columnOptionalText(stmt, 12)
+                source: columnOptionalText(stmt, 12),
+                isWrong: sqlite3_column_int(stmt, 13) != 0
             ))
         }
         return (items, total)
+    }
+
+    @discardableResult
+    func setQuestionWrong(id: Int, isWrong: Bool) -> Bool {
+        guard let handle else { return false }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            handle,
+            "UPDATE questions SET is_wrong = ? WHERE id = ?",
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else {
+            return false
+        }
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_int(statement, 1, isWrong ? 1 : 0)
+        sqlite3_bind_int64(statement, 2, sqlite3_int64(id))
+        return sqlite3_step(statement) == SQLITE_DONE
+    }
+
+    @discardableResult
+    func deleteQuestion(id: Int) -> Bool {
+        guard let handle else { return false }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            handle,
+            "DELETE FROM questions WHERE id = ?",
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else {
+            return false
+        }
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_int64(statement, 1, sqlite3_int64(id))
+        return sqlite3_step(statement) == SQLITE_DONE
     }
 
     // MARK: - 考研英语阅读

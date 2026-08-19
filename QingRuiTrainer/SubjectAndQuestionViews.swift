@@ -112,6 +112,10 @@ final class AppModel {
         showWebPane = true
     }
 
+    func reloadSubjects() {
+        subjects = Database.shared.subjects()
+    }
+
     func requestAIWordStudy(for word: EnglishWord) {
         let prompt = """
         请作为我的英语词汇教练，带我循序渐进掌握单词“\(word.word)”。
