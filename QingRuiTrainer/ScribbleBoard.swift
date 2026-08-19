@@ -26,6 +26,27 @@ enum PenKind: Hashable {
     }
 }
 
+enum ScribbleNewPageLayout: String, CaseIterable, Identifiable {
+    case horizontal
+    case vertical
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .horizontal: "水平"
+        case .vertical: "垂直"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .horizontal: "arrow.left.and.right"
+        case .vertical: "arrow.up.and.down"
+        }
+    }
+}
+
 // MARK: - 当前题的手写工作区
 
 @Observable
@@ -52,19 +73,30 @@ struct ScribbleBoardSheet: View {
     @State private var penKind: PenKind = .pen
     @State private var toolWidth: CGFloat = 5
     @State private var transitionDirection: PageSwipeDirection = .next
+    @State private var showBoardSettings = false
+    @State private var verticalScrollTarget: ObjectIdentifier?
+    @AppStorage("cc.scribbleNewPageLayout") private var pageLayoutRaw = ScribbleNewPageLayout.horizontal.rawValue
 
     private let inkColors: [Color] = [.black, .red, .blue, .green, .orange, .purple]
+    private let verticalCoordinateSpace = "scribbleVerticalPages"
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                ZStack {
-                    PageCanvasView(canvasView: activeCanvas,
-                                   question: question) { direction in
-                        changePage(direction)
+                GeometryReader { proxy in
+                    if pageLayout == .vertical {
+                        verticalPages(viewportSize: proxy.size)
+                    } else {
+                        ZStack {
+                            PageCanvasView(canvasView: activeCanvas,
+                                           question: question,
+                                           fingerPagingAxis: .horizontal) { direction in
+                                changePage(direction)
+                            }
+                            .id(ObjectIdentifier(activeCanvas))
+                            .transition(pageTransition)
+                        }
                     }
-                    .id(ObjectIdentifier(activeCanvas))
-                    .transition(pageTransition)
                 }
                 .clipped()
                 .padding(8)
@@ -76,6 +108,14 @@ struct ScribbleBoardSheet: View {
             }
             .onAppear {
                 workspace.pages.forEach { applyTool(to: $0) }
+                if pageLayout == .vertical {
+                    verticalScrollTarget = ObjectIdentifier(activeCanvas)
+                }
+            }
+            .onChange(of: pageLayoutRaw) { _, _ in
+                if pageLayout == .vertical {
+                    verticalScrollTarget = ObjectIdentifier(activeCanvas)
+                }
             }
             .navigationTitle("手写板 · 第 \(workspace.pageIndex + 1)/\(workspace.pages.count) 页")
             .navigationBarTitleDisplayMode(.inline)
@@ -99,6 +139,16 @@ struct ScribbleBoardSheet: View {
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
+                        showBoardSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("手写板设置")
+                    .popover(isPresented: $showBoardSettings) {
+                        ScribbleBoardSettingsPopover(pageLayout: pageLayoutBinding)
+                            .presentationCompactAdaptation(.sheet)
+                    }
+                    Button {
                         addPage()
                     } label: {
                         Image(systemName: "plus.circle.fill")
@@ -116,6 +166,18 @@ struct ScribbleBoardSheet: View {
 
     private var activeCanvas: ScribbleCanvasView { workspace.pages[workspace.pageIndex] }
 
+    private var pageLayout: ScribbleNewPageLayout {
+        get { ScribbleNewPageLayout(rawValue: pageLayoutRaw) ?? .horizontal }
+        nonmutating set { pageLayoutRaw = newValue.rawValue }
+    }
+
+    private var pageLayoutBinding: Binding<ScribbleNewPageLayout> {
+        Binding(
+            get: { pageLayout },
+            set: { pageLayout = $0 }
+        )
+    }
+
     private func close() {
         if let onClose {
             onClose()
@@ -128,9 +190,13 @@ struct ScribbleBoardSheet: View {
         let newPage = ScribbleCanvasView()
         applyTool(to: newPage)
         transitionDirection = .next
+        let insertIndex = min(workspace.pageIndex + 1, workspace.pages.count)
         withAnimation(pageAnimation) {
-            workspace.pages.append(newPage)
-            workspace.pageIndex = workspace.pages.count - 1
+            workspace.pages.insert(newPage, at: insertIndex)
+            workspace.pageIndex = insertIndex
+        }
+        if pageLayout == .vertical {
+            verticalScrollTarget = ObjectIdentifier(newPage)
         }
     }
 
@@ -157,6 +223,9 @@ struct ScribbleBoardSheet: View {
             withAnimation(pageAnimation) {
                 workspace.pageIndex -= 1
             }
+        }
+        if pageLayout == .vertical {
+            verticalScrollTarget = ObjectIdentifier(activeCanvas)
         }
     }
 
@@ -190,35 +259,26 @@ struct ScribbleBoardSheet: View {
     // MARK: 底部工具条（笔型 / 颜色 / 翻页）
 
     private var toolBar: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 14) {
-                penPicker
-                    .frame(width: 260)
-                colorPicker(circleSize: 22, spacing: 8)
-                if penKind != .eraser {
-                    widthControl(sliderWidth: 110)
-                }
-                pageControls
-            }
-            .fixedSize(horizontal: true, vertical: false)
-
-            VStack(spacing: 8) {
+        GeometryReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     penPicker
+                        .frame(width: 174)
+                    colorPicker(circleSize: 17, spacing: 5)
+                    if penKind != .eraser {
+                        widthControl(sliderWidth: 72)
+                    }
                     pageControls
                 }
-
-                HStack(spacing: 8) {
-                    colorPicker(circleSize: 19, spacing: 5)
-                    if penKind != .eraser {
-                        Spacer(minLength: 4)
-                        widthControl(sliderWidth: 76)
-                    }
-                }
+                .controlSize(.small)
+                .frame(minWidth: max(0, proxy.size.width - 24), alignment: .center)
+                .padding(.horizontal, 12)
             }
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         }
+        .frame(height: 42)
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 4)
     }
 
     private var penPicker: some View {
@@ -295,6 +355,116 @@ struct ScribbleBoardSheet: View {
             .accessibilityLabel("下一页")
         }
     }
+
+    private func verticalPages(viewportSize: CGSize) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                LazyVStack(spacing: 0) {
+                    ForEach(pageItems) { item in
+                        PageCanvasView(canvasView: item.canvas,
+                                       question: question,
+                                       fingerPagingAxis: .none) { _ in }
+                            .frame(height: max(420, viewportSize.height))
+                            .id(item.id)
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear.preference(
+                                        key: ScribblePageMidPreferenceKey.self,
+                                        value: [
+                                            item.id: geo.frame(in: .named(verticalCoordinateSpace)).midY
+                                        ]
+                                    )
+                                }
+                            )
+
+                        if item.index < workspace.pages.count - 1 {
+                            DashedPageSeparator()
+                                .frame(height: 22)
+                        }
+                    }
+                }
+            }
+            .coordinateSpace(name: verticalCoordinateSpace)
+            .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            .onAppear {
+                proxy.scrollTo(ObjectIdentifier(activeCanvas), anchor: .top)
+            }
+            .onChange(of: verticalScrollTarget) { _, target in
+                guard let target else { return }
+                withAnimation(pageAnimation) {
+                    proxy.scrollTo(target, anchor: .top)
+                }
+                DispatchQueue.main.async {
+                    if verticalScrollTarget == target {
+                        verticalScrollTarget = nil
+                    }
+                }
+            }
+            .onPreferenceChange(ScribblePageMidPreferenceKey.self) { mids in
+                updateVisibleVerticalPage(from: mids, viewportHeight: viewportSize.height)
+            }
+        }
+    }
+
+    private var pageItems: [ScribblePageItem] {
+        workspace.pages.enumerated().map { index, canvas in
+            ScribblePageItem(id: ObjectIdentifier(canvas), index: index, canvas: canvas)
+        }
+    }
+
+    private func updateVisibleVerticalPage(from mids: [ObjectIdentifier: CGFloat],
+                                           viewportHeight: CGFloat) {
+        guard pageLayout == .vertical else { return }
+        let centerY = viewportHeight / 2
+        let nearest = pageItems
+            .filter { mids[$0.id] != nil }
+            .min { lhs, rhs in
+                abs((mids[lhs.id] ?? centerY) - centerY) < abs((mids[rhs.id] ?? centerY) - centerY)
+            }
+        guard let nearest, workspace.pageIndex != nearest.index else { return }
+        workspace.pageIndex = nearest.index
+    }
+}
+
+private struct ScribblePageItem: Identifiable {
+    let id: ObjectIdentifier
+    let index: Int
+    let canvas: ScribbleCanvasView
+}
+
+private struct ScribblePageMidPreferenceKey: PreferenceKey {
+    static var defaultValue: [ObjectIdentifier: CGFloat] = [:]
+
+    static func reduce(value: inout [ObjectIdentifier: CGFloat],
+                       nextValue: () -> [ObjectIdentifier: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
+private struct ScribbleBoardSettingsPopover: View {
+    @Binding var pageLayout: ScribbleNewPageLayout
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("方向", selection: $pageLayout) {
+                        ForEach(ScribbleNewPageLayout.allCases) { layout in
+                            Label(layout.title, systemImage: layout.icon)
+                                .tag(layout)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                } header: {
+                    Text("新增页")
+                }
+            }
+            .navigationTitle("手写板设置")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .frame(minWidth: 320, minHeight: 180)
+        .presentationDetents([.height(220)])
+    }
 }
 
 // MARK: - 单页画布（Apple Pencil 书写，手指翻页）
@@ -306,6 +476,7 @@ enum PageSwipeDirection {
 struct PageCanvasView: View {
     let canvasView: PKCanvasView
     let question: Question?
+    let fingerPagingAxis: FingerPagingAxis
     let onFingerSwipe: (PageSwipeDirection) -> Void
 
     var body: some View {
@@ -318,13 +489,41 @@ struct PageCanvasView: View {
                     .allowsHitTesting(false)
             }
 
-            PencilCanvasView(canvasView: canvasView, onFingerSwipe: onFingerSwipe)
+            PencilCanvasView(canvasView: canvasView,
+                             fingerPagingAxis: fingerPagingAxis,
+                             onFingerSwipe: onFingerSwipe)
         }
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay {
             RoundedRectangle(cornerRadius: 6)
                 .strokeBorder(Color(uiColor: .separator), lineWidth: 0.5)
         }
+    }
+}
+
+private struct DashedPageSeparator: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            DashedLine()
+                .stroke(Color(uiColor: .separator), style: StrokeStyle(lineWidth: 1, dash: [8, 8]))
+                .frame(height: 1)
+            Image(systemName: "chevron.down")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            DashedLine()
+                .stroke(Color(uiColor: .separator), style: StrokeStyle(lineWidth: 1, dash: [8, 8]))
+                .frame(height: 1)
+        }
+        .padding(.horizontal, 12)
+    }
+}
+
+private struct DashedLine: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        return path
     }
 }
 
@@ -363,17 +562,20 @@ private struct QuestionPageContent: View {
 
 private struct PencilCanvasView: UIViewRepresentable {
     let canvasView: PKCanvasView
+    let fingerPagingAxis: FingerPagingAxis
     let onFingerSwipe: (PageSwipeDirection) -> Void
 
     func makeUIView(context: Context) -> PKCanvasView {
         configure(canvasView)
         (canvasView as? ScribbleCanvasView)?.onFingerSwipe = onFingerSwipe
+        (canvasView as? ScribbleCanvasView)?.fingerPagingAxis = fingerPagingAxis
         return canvasView
     }
 
     func updateUIView(_ uiView: PKCanvasView, context: Context) {
         configure(uiView)
         (uiView as? ScribbleCanvasView)?.onFingerSwipe = onFingerSwipe
+        (uiView as? ScribbleCanvasView)?.fingerPagingAxis = fingerPagingAxis
     }
 
     private func configure(_ canvas: PKCanvasView) {
@@ -392,8 +594,17 @@ private struct PencilCanvasView: UIViewRepresentable {
     }
 }
 
+enum FingerPagingAxis {
+    case none, horizontal
+}
+
 final class ScribbleCanvasView: PKCanvasView, UIGestureRecognizerDelegate {
     var onFingerSwipe: ((PageSwipeDirection) -> Void)?
+    var fingerPagingAxis: FingerPagingAxis = .horizontal {
+        didSet {
+            pageSwipeRecognizer.isEnabled = fingerPagingAxis != .none
+        }
+    }
 
     private lazy var pageSwipeRecognizer: UIPanGestureRecognizer = {
         let recognizer = UIPanGestureRecognizer(target: self, action: #selector(handlePageSwipe(_:)))
@@ -416,12 +627,19 @@ final class ScribbleCanvasView: PKCanvasView, UIGestureRecognizerDelegate {
     }
 
     @objc private func handlePageSwipe(_ recognizer: UIPanGestureRecognizer) {
-        guard recognizer.state == .ended else { return }
+        guard fingerPagingAxis != .none, recognizer.state == .ended else { return }
         let translation = recognizer.translation(in: self)
         let velocity = recognizer.velocity(in: self)
-        let horizontal = abs(translation.x) >= abs(translation.y)
-        let distance = horizontal ? translation.x : translation.y
-        let speed = horizontal ? velocity.x : velocity.y
+        let distance: CGFloat
+        let speed: CGFloat
+        switch fingerPagingAxis {
+        case .none:
+            return
+        case .horizontal:
+            guard abs(translation.x) >= abs(translation.y) else { return }
+            distance = translation.x
+            speed = velocity.x
+        }
         guard abs(distance) > 60 || abs(speed) > 500 else { return }
 
         onFingerSwipe?(distance < 0 ? .next : .previous)
