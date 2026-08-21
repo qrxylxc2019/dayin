@@ -476,7 +476,8 @@ struct PageCanvasView: View {
         ZStack(alignment: .topLeading) {
             Color(uiColor: .systemBackground)
 
-            if let question {
+            if let question,
+               !question.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 QuestionPageContent(question: question)
                     .padding(20)
                     .allowsHitTesting(false)

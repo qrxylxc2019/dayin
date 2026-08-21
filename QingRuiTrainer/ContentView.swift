@@ -134,7 +134,6 @@ struct SubjectPane: View {
     @State private var scribbleWorkspace = ScribbleWorkspace()
     @State private var emptySubject: String?
     @State private var wrongOnlyMode = false
-    @State private var deleteQuestionCandidate: Question?
 
     var body: some View {
         ZStack {
@@ -164,7 +163,7 @@ struct SubjectPane: View {
                                 .tint(wrongOnlyMode ? CCTheme.bad : CCTheme.accent)
 
                                 Button(role: .destructive) {
-                                    deleteQuestionCandidate = box.session.current
+                                    deleteCurrentManagedQuestion(from: box.session)
                                 } label: {
                                     Label("删除当前题", systemImage: "trash")
                                 }
@@ -196,7 +195,14 @@ struct SubjectPane: View {
                     }
                 }
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        Button {
+                            showScribbleBoard(for: listScribbleQuestion)
+                        } label: {
+                            Label("手写板", systemImage: "square.and.pencil")
+                        }
+                        .accessibilityLabel("打开手写板")
+
                         Button {
                             showSettings = true
                         } label: {
@@ -211,19 +217,6 @@ struct SubjectPane: View {
                     Button("好", role: .cancel) {}
                 } message: {
                     Text(emptySubject ?? "")
-                }
-                .alert("删除这道题？", isPresented: Binding(
-                    get: { deleteQuestionCandidate != nil },
-                    set: { if !$0 { deleteQuestionCandidate = nil } }
-                )) {
-                    Button("删除", role: .destructive) {
-                        deleteCurrentManagedQuestion()
-                    }
-                    Button("取消", role: .cancel) {
-                        deleteQuestionCandidate = nil
-                    }
-                } message: {
-                    Text("删除后会从本机题库数据库中移除，当前训练列表也会同步去掉。")
                 }
             }
 
@@ -253,6 +246,20 @@ struct SubjectPane: View {
         case .fullScreen:
             fullScreenScribbleQuestion = question
         }
+    }
+
+    private var listScribbleQuestion: Question {
+        Question(
+            id: 0,
+            directoryId: 0,
+            questionType: "scribble",
+            title: "",
+            options: [:],
+            correctAnswer: "",
+            explanation: nil,
+            aiExplanation: nil,
+            source: nil
+        )
     }
 
     private func startTraining(_ subject: Subject) {
@@ -321,17 +328,13 @@ struct SubjectPane: View {
         session.replaceQuestions(qs)
     }
 
-    private func deleteCurrentManagedQuestion() {
+    private func deleteCurrentManagedQuestion(from session: QuizSession) {
         guard supportsQuestionManagement,
-              let question = deleteQuestionCandidate,
-              Database.shared.deleteQuestion(id: question.id) else {
-            deleteQuestionCandidate = nil
-            return
-        }
-        deleteQuestionCandidate = nil
+              let question = session.current,
+              Database.shared.deleteQuestion(id: question.id) else { return }
         model.reloadSubjects()
         scribbleWorkspace.reset()
-        sessionBox?.session.removeCurrentQuestion()
+        session.removeCurrentQuestion()
     }
 }
 

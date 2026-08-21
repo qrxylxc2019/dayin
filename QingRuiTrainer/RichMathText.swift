@@ -37,7 +37,9 @@ enum RichMathParser {
     /// 2) 文本段内提取常见的行内与块级 LaTeX 公式
     private static func appendTextAndMath(_ text: String, into tokens: inout [MathToken]) {
         guard !text.isEmpty else { return }
-        let pattern = #"(?s)\$\$(.+?)\$\$|\\\[(.+?)\\\]|\\\((.+?)\\\)|(?<![$\\])\$(?!\$)(.+?)(?<!\\)\$(?!\$)"#
+        // SwiftMath 支持 begin/end 环境，但题库中有些环境没有再包一层 $，
+        // 也有数据把 \begin 写成了 /begin，因此先把整段环境识别为公式。
+        let pattern = #"(?s)((?:\\|/)\s*begin\s*\{\s*[A-Za-z*]+\s*\}.*?(?:\\|/)\s*end\s*\{\s*[A-Za-z*]+\s*\})|\$\$(.+?)\$\$|\\\[(.+?)\\\]|\\\((.+?)\\\)|(?<![$\\])\$(?!\$)(.+?)(?<!\\)\$(?!\$)"#
         guard let expression = try? NSRegularExpression(pattern: pattern) else {
             appendPlain(text, into: &tokens)
             return
@@ -82,7 +84,10 @@ enum RichMathParser {
 
     /// SwiftMath 不支持的命令降级处理
     private static func clean(_ latex: String) -> String {
-        latex
+        return replaceUnsupportedCommands(replaceUnsupportedIntegrals(padSingleColumnCases(normalizeEnvironmentCommands(latex))))
+            .replacingOccurrences(of: "\\dfrac", with: "\\frac")
+            .replacingOccurrences(of: "\\tfrac", with: "\\frac")
+            .replacingOccurrences(of: "\\cfrac", with: "\\frac")
             .replacingOccurrences(of: "\\displaystyle", with: "")
             .replacingOccurrences(of: "\\bigg", with: "")
             .replacingOccurrences(of: "\\big", with: "")
@@ -92,6 +97,94 @@ enum RichMathParser {
             .replacingOccurrences(of: "\\[", with: "")
             .replacingOccurrences(of: "\\]", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// SwiftMath 不支持 \iint/\iiint，降级为多个靠拢的单积分号，
+    /// 下标会挂在最后一个 ∫ 上，效果接近 LaTeX 的多重积分。
+    private static func replaceUnsupportedIntegrals(_ latex: String) -> String {
+        latex
+            .replacingOccurrences(of: "\\iiint", with: "\\int\\!\\!\\!\\int\\!\\!\\!\\int")
+            .replacingOccurrences(of: "\\iint", with: "\\int\\!\\!\\!\\int")
+    }
+
+    /// 题库中其他 SwiftMath 不支持命令的降级处理
+    private static func replaceUnsupportedCommands(_ latex: String) -> String {
+        var result = latex
+            // 粗体向量：boldsymbol → mathbf
+            .replacingOccurrences(of: "\\boldsymbol", with: "\\mathbf")
+            // 蕴含符号：implies → Rightarrow
+            .replacingOccurrences(of: "\\implies", with: "\\Rightarrow")
+            // 不相似：not\sim → neq（SwiftMath 不支持 \not 修饰符）
+            .replacingOccurrences(of: "\\not\\sim", with: "\\neq")
+
+        // 带标注的长箭头：xrightarrow{...} → to（丢弃标注）
+        if let arrowRegex = try? NSRegularExpression(pattern: #"\\xrightarrow\s*\{[^}]*\}"#) {
+            let ns = result as NSString
+            result = arrowRegex.stringByReplacingMatches(
+                in: result, range: NSRange(location: 0, length: ns.length),
+                withTemplate: "\\\\to"
+            )
+        }
+
+        // 去心邻域：mathring{...} → 内容本身（U 的去心符号降级）
+        if let ringRegex = try? NSRegularExpression(pattern: #"\\mathring\s*\{([^}]*)\}"#) {
+            let ns = result as NSString
+            result = ringRegex.stringByReplacingMatches(
+                in: result, range: NSRange(location: 0, length: ns.length),
+                withTemplate: "$1"
+            )
+        }
+        return result
+    }
+
+    /// SwiftMath 的 cases 环境要求恰好 2 列（每行需含 &），
+    /// 题库中存在单列 cases（如 \begin{cases}x=1 \\ y=1.\end{cases}），
+    /// 自动为每一行补一个空列以满足渲染要求。
+    private static func padSingleColumnCases(_ latex: String) -> String {
+        let pattern = #"(?s)(\\begin\{cases\})(.*?)(\\end\{cases\})"#
+        guard let expression = try? NSRegularExpression(pattern: pattern) else {
+            return latex
+        }
+
+        let source = latex as NSString
+        let matches = expression.matches(in: latex,
+                                          range: NSRange(location: 0, length: source.length))
+        guard !matches.isEmpty else { return latex }
+
+        let result = NSMutableString(string: latex)
+        for match in matches.reversed() {
+            let content = source.substring(with: match.range(at: 2))
+            // 已含 & 或嵌套其他环境时不动，避免破坏结构
+            guard !content.contains("&"), !content.contains("begin") else { continue }
+            let rows = content
+                .components(separatedBy: "\\\\")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .map { $0.isEmpty ? "&" : "\($0) &" }
+            result.replaceCharacters(
+                in: match.range(at: 2),
+                with: rows.joined(separator: " \\\\ ")
+            )
+        }
+        return result as String
+    }
+
+    private static func normalizeEnvironmentCommands(_ latex: String) -> String {
+        let pattern = #"(?<![A-Za-z])[/\\]\s*(begin|end)\s*\{\s*([^}\s]+)\s*\}"#
+        guard let expression = try? NSRegularExpression(pattern: pattern) else {
+            return latex
+        }
+
+        let result = NSMutableString(string: latex)
+        let range = NSRange(location: 0, length: result.length)
+        for match in expression.matches(in: result as String, range: range).reversed() {
+            let command = result.substring(with: match.range(at: 1))
+            let environment = result.substring(with: match.range(at: 2))
+            result.replaceCharacters(
+                in: match.range,
+                with: "\\\(command){\(environment)}"
+            )
+        }
+        return result as String
     }
 }
 
@@ -410,6 +503,8 @@ struct FlowLayout: Layout {
         let maxWidth = proposal.width ?? .infinity
         var positions: [CGPoint] = []
         var x: CGFloat = 0, y: CGFloat = 0, lineHeight: CGFloat = 0, lineWidth: CGFloat = 0
+        // 记录每个元素所在行的基准 y 与自身高度，便于同行内垂直居中
+        var items: [(rowBaseY: CGFloat, x: CGFloat, height: CGFloat)] = []
 
         for sub in subviews {
             // 以面板宽度约束测量，防止内容按理想宽度超出右栏
@@ -422,11 +517,29 @@ struct FlowLayout: Layout {
                 y += lineHeight + spacing
                 lineHeight = 0
             }
-            positions.append(CGPoint(x: x, y: y))
+            items.append((y, x, h))
+            positions.append(CGPoint(x: x, y: 0)) // y 稍后按行统一计算
             x += w + spacing
             lineWidth = max(lineWidth, x)
             lineHeight = max(lineHeight, h)
         }
+
+        // 按行分组（以 x == 0 分界），组内以行高中线垂直居中
+        var index = 0
+        while index < items.count {
+            var rowEnd = index
+            var rowHeight: CGFloat = 0
+            while rowEnd < items.count, rowEnd == index || items[rowEnd].x > 0 {
+                rowHeight = max(rowHeight, items[rowEnd].height)
+                rowEnd += 1
+            }
+            let baseY = items[index].rowBaseY
+            for i in index..<rowEnd {
+                positions[i].y = baseY + (rowHeight - items[i].height) / 2
+            }
+            index = rowEnd
+        }
+
         return (positions, CGSize(width: lineWidth, height: y + lineHeight))
     }
 }

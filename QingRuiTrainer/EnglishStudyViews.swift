@@ -719,7 +719,6 @@ struct EnglishWordView: View {
     @State private var words: [EnglishWord] = []
     @State private var studyMode: WordStudyMode = .grid
     @State private var showMeaning = true
-    @State private var searchText = ""
     @State private var page = 1
     @State private var flashIndex = 0
     @State private var flashCardDirection: FlashCardDirection = .next
@@ -730,7 +729,9 @@ struct EnglishWordView: View {
             Divider()
 
             if filteredWords.isEmpty {
-                ContentUnavailableView.search(text: searchText)
+                ContentUnavailableView {
+                    Label("暂无单词", systemImage: "textformat.abc")
+                }
             } else if studyMode == .grid {
                 gridMode
             } else {
@@ -739,15 +740,10 @@ struct EnglishWordView: View {
         }
         .navigationTitle("英语单词")
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, prompt: "搜索单词、音标或释义")
         .onAppear {
             if words.isEmpty {
                 words = Database.shared.englishWords()
             }
-        }
-        .onChange(of: searchText) { _, _ in
-            page = 1
-            flashIndex = 0
         }
         .onChange(of: studyMode) { _, _ in
             flashIndex = 0
@@ -755,13 +751,7 @@ struct EnglishWordView: View {
     }
 
     private var filteredWords: [EnglishWord] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return words }
-        return words.filter {
-            $0.word.localizedCaseInsensitiveContains(query)
-                || $0.phonetic.localizedCaseInsensitiveContains(query)
-                || $0.meaning.localizedCaseInsensitiveContains(query)
-        }
+        words
     }
 
     private var totalPages: Int {
@@ -892,7 +882,6 @@ struct EnglishWordView: View {
 
                     VStack(spacing: 16) {
                         HStack {
-                            Spacer()
                             Button {
                                 model.requestAIWordStudy(for: word)
                             } label: {
@@ -903,6 +892,19 @@ struct EnglishWordView: View {
                             .buttonStyle(.bordered)
                             .tint(CCTheme.accent)
                             .accessibilityLabel("AI 学习 \(word.word)")
+
+                            Spacer()
+
+                            Button(role: .destructive) {
+                                deleteWord(word)
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.title3)
+                                    .frame(width: 38, height: 38)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(CCTheme.bad)
+                            .accessibilityLabel("删除单词 \(word.word)")
                         }
 
                         Spacer(minLength: 0)

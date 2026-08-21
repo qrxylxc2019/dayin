@@ -165,7 +165,7 @@ final class AppModel {
 
 struct SubjectListView: View {
     @Environment(AppModel.self) private var model
-    var onSelected: (Subject) -> Void
+    let onSelected: (Subject) -> Void
 
     var body: some View {
         ScrollView {
@@ -217,13 +217,12 @@ struct SubjectListView: View {
                     .font(.caption)
                     .foregroundStyle(CCTheme.textSub.opacity(0.6))
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(CCTheme.card, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(CCTheme.border, lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .padding(12)
+        .background(CCTheme.card, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10)
+            .strokeBorder(CCTheme.border, lineWidth: 1))
     }
 
     private func childChip(_ child: Subject) -> some View {
@@ -241,11 +240,11 @@ struct SubjectListView: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(CCTheme.textSub)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(CCTheme.accentBG, in: Capsule())
-            .overlay(Capsule().strokeBorder(CCTheme.border, lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(CCTheme.accentBG, in: Capsule())
+        .overlay(Capsule().strokeBorder(CCTheme.border, lineWidth: 1))
     }
 }
