@@ -291,12 +291,11 @@ struct SubjectPane: View {
         guard let subject = model.currentSubject else { return [] }
         let (items, _) = Database.shared.questions(
             directoryId: subject.id,
-            limit: 200,
-            wrongOnly: wrongOnly
+            limit: model.trainingCount,
+            wrongOnly: wrongOnly,
+            randomOrder: model.shuffle
         )
-        var qs = items
-        if model.shuffle { qs.shuffle() }
-        return Array(qs.prefix(model.trainingCount))
+        return items
     }
 
     private var supportsQuestionManagement: Bool {

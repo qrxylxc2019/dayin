@@ -114,5 +114,6 @@ struct EnglishTranslationItem: Identifiable, Hashable {
     let directoryId: Int
     let content: String
     let answer: String
+    let source: String?
     let sortOrder: Int
 }

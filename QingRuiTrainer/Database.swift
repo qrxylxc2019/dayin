@@ -44,6 +44,7 @@ final class Database {
 
         ensureQuestionWrongFlagColumn()
         migrateEnglishStudyDataIfNeeded()
+        migrateBundledQuestionsIfNeeded()
     }
 
     // MARK: - 辅助
@@ -134,6 +135,7 @@ final class Database {
           directory_id INTEGER NOT NULL,
           content TEXT NOT NULL,
           answer TEXT NOT NULL,
+          source TEXT,
           sort_order INTEGER DEFAULT 0,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (directory_id) REFERENCES directories(id)
@@ -150,7 +152,12 @@ final class Database {
         """
         guard execute(schemaSQL) else { return }
 
-        let migrationKey = "english-study-seed-v2"
+        if !table("english_translate", hasColumn: "source"),
+           !execute("ALTER TABLE english_translate ADD COLUMN source TEXT") {
+            return
+        }
+
+        let migrationKey = "english-study-seed-v4"
         var checkStatement: OpaquePointer?
         guard sqlite3_prepare_v2(
             handle,
@@ -209,15 +216,118 @@ final class Database {
           (id, word, phonetic, meaning, sort_order, created_at)
         SELECT id, word, phonetic, meaning, sort_order, created_at
         FROM bundled_seed.english_words;
-        INSERT OR IGNORE INTO english_translate
-          (id, directory_id, content, answer, sort_order, created_at)
-        SELECT id, directory_id, content, answer, sort_order, created_at
-        FROM bundled_seed.english_translate;
+        INSERT INTO english_translate
+          (directory_id, content, answer, source, sort_order, created_at)
+        SELECT seed.directory_id, seed.content, seed.answer, seed.source,
+               seed.sort_order, seed.created_at
+        FROM bundled_seed.english_translate seed
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM english_translate existing
+          WHERE existing.directory_id = seed.directory_id
+            AND existing.content = seed.content
+        );
         INSERT OR REPLACE INTO app_migrations (migration_key) VALUES ('\(migrationKey)');
         COMMIT;
         """
         _ = execute(importSQL)
         _ = execute("DETACH DATABASE bundled_seed")
+    }
+
+    /// 覆盖安装时 Documents 中会保留旧数据库，因此合并 Bundle 内新增题目和来源信息。
+    /// 已存在的题目只补充空来源，不覆盖用户的错题状态或其他本地数据。
+    private func migrateBundledQuestionsIfNeeded() {
+        guard let handle else { return }
+
+        _ = execute("""
+        CREATE TABLE IF NOT EXISTS app_migrations (
+          migration_key TEXT PRIMARY KEY,
+          applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+
+        let migrationKey = "bundled-questions-seed-v12"
+        var checkStatement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            handle,
+            "SELECT 1 FROM app_migrations WHERE migration_key = ? LIMIT 1",
+            -1,
+            &checkStatement,
+            nil
+        ) == SQLITE_OK else { return }
+        sqlite3_bind_text(checkStatement, 1, migrationKey, -1, SQLITE_TRANSIENT)
+        let alreadyApplied = sqlite3_step(checkStatement) == SQLITE_ROW
+        sqlite3_finalize(checkStatement)
+        guard !alreadyApplied else { return }
+
+        guard let bundledURL = Bundle.main.url(forResource: "qingrui", withExtension: "db") else {
+            return
+        }
+        let seedURL = URL(fileURLWithPath: documentsPath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("qingrui-questions-seed.db")
+        let fileManager = FileManager.default
+        try? fileManager.removeItem(at: seedURL)
+        do {
+            try fileManager.copyItem(at: bundledURL, to: seedURL)
+        } catch {
+            NSLog("题库数据准备失败: %@", error.localizedDescription)
+            return
+        }
+        defer { try? fileManager.removeItem(at: seedURL) }
+
+        var attachStatement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            handle,
+            "ATTACH DATABASE ? AS bundled_questions_seed",
+            -1,
+            &attachStatement,
+            nil
+        ) == SQLITE_OK else { return }
+        sqlite3_bind_text(attachStatement, 1, seedURL.path, -1, SQLITE_TRANSIENT)
+        let attached = sqlite3_step(attachStatement) == SQLITE_DONE
+        sqlite3_finalize(attachStatement)
+        guard attached else { return }
+
+        let importSQL = """
+        BEGIN;
+        INSERT INTO questions (
+          id, directory_id, question_type, title,
+          option_a, option_b, option_c, option_d, option_e,
+          correct_answer, explanation, sort_order,
+          ai_explanation, pid, knowledge_id, level, source, is_wrong
+        )
+        SELECT seed.id, seed.directory_id, seed.question_type, seed.title,
+               seed.option_a, seed.option_b, seed.option_c, seed.option_d, seed.option_e,
+               seed.correct_answer, seed.explanation, seed.sort_order,
+               seed.ai_explanation, seed.pid, seed.knowledge_id, seed.level,
+               seed.source, seed.is_wrong
+        FROM bundled_questions_seed.questions seed
+        WHERE NOT EXISTS (
+          SELECT 1 FROM questions existing WHERE existing.id = seed.id
+        );
+
+        UPDATE questions
+        SET source = (
+          SELECT seed.source
+          FROM bundled_questions_seed.questions seed
+          WHERE seed.id = questions.id
+        )
+        WHERE (source IS NULL OR TRIM(source) = '')
+          AND EXISTS (
+            SELECT 1
+            FROM bundled_questions_seed.questions seed
+            WHERE seed.id = questions.id
+              AND seed.source IS NOT NULL
+              AND TRIM(seed.source) <> ''
+          );
+
+        INSERT OR REPLACE INTO app_migrations (migration_key)
+        VALUES ('bundled-questions-seed-v12');
+        COMMIT;
+        """
+        _ = execute(importSQL)
+        _ = execute("DETACH DATABASE bundled_questions_seed")
     }
 
     // MARK: - 科目
@@ -288,7 +398,8 @@ final class Database {
                    search: String = "",
                    limit: Int = 50,
                    offset: Int = 0,
-                   wrongOnly: Bool = false) -> (items: [Question], total: Int) {
+                   wrongOnly: Bool = false,
+                   randomOrder: Bool = false) -> (items: [Question], total: Int) {
         guard let handle else { return ([], 0) }
 
         var conditions: [String] = []
@@ -334,13 +445,16 @@ final class Database {
         // 数据
         var items: [Question] = []
         var stmt: OpaquePointer?
+        let orderSQL = randomOrder
+            ? "ORDER BY RANDOM()"
+            : "ORDER BY q.directory_id, q.sort_order, q.id"
         let sql = """
         SELECT q.id, q.directory_id, q.question_type, q.title,
                q.option_a, q.option_b, q.option_c, q.option_d, q.option_e,
                q.correct_answer, q.explanation, q.ai_explanation, q.source,
                COALESCE(q.is_wrong, 0)
         FROM questions q \(whereSQL)
-        ORDER BY q.directory_id, q.sort_order, q.id
+        \(orderSQL)
         LIMIT ? OFFSET ?
         """
         guard sqlite3_prepare_v2(handle, sql, -1, &stmt, nil) == SQLITE_OK else { return ([], 0) }
@@ -527,7 +641,7 @@ final class Database {
         guard let handle else { return [] }
         var statement: OpaquePointer?
         let sql = """
-        SELECT id, directory_id, content, answer, sort_order
+        SELECT id, directory_id, content, answer, source, sort_order
         FROM english_translate
         WHERE directory_id = ?
         ORDER BY sort_order, id
@@ -544,7 +658,8 @@ final class Database {
                     directoryId: Int(sqlite3_column_int64(statement, 1)),
                     content: columnText(statement, 2),
                     answer: columnText(statement, 3),
-                    sortOrder: Int(sqlite3_column_int64(statement, 4))
+                    source: columnOptionalText(statement, 4),
+                    sortOrder: Int(sqlite3_column_int64(statement, 5))
                 )
             )
         }
@@ -575,6 +690,7 @@ final class Database {
             directoryId: directoryId,
             content: content,
             answer: answer,
+            source: nil,
             sortOrder: englishTranslations(directoryId: directoryId).last?.sortOrder ?? 0
         )
     }

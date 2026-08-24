@@ -656,14 +656,41 @@ private struct MaterialContentHeightKey: PreferenceKey {
 
 private struct MaterialPencilCanvas: UIViewRepresentable {
     let canvasView: PKCanvasView
+    var onDrawingChanged: ((PKDrawing) -> Void)?
+
+    init(
+        canvasView: PKCanvasView,
+        onDrawingChanged: ((PKDrawing) -> Void)? = nil
+    ) {
+        self.canvasView = canvasView
+        self.onDrawingChanged = onDrawingChanged
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onDrawingChanged: onDrawingChanged)
+    }
 
     func makeUIView(context: Context) -> PKCanvasView {
         configure(canvasView)
+        canvasView.delegate = context.coordinator
         return canvasView
     }
 
     func updateUIView(_ uiView: PKCanvasView, context: Context) {
+        context.coordinator.onDrawingChanged = onDrawingChanged
         configure(uiView)
+    }
+
+    final class Coordinator: NSObject, PKCanvasViewDelegate {
+        var onDrawingChanged: ((PKDrawing) -> Void)?
+
+        init(onDrawingChanged: ((PKDrawing) -> Void)?) {
+            self.onDrawingChanged = onDrawingChanged
+        }
+
+        func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+            onDrawingChanged?(canvasView.drawing)
+        }
     }
 
     private func configure(_ canvas: PKCanvasView) {
@@ -717,7 +744,7 @@ struct EnglishWordView: View {
     private let wordsPerPage = 49
 
     @State private var words: [EnglishWord] = []
-    @State private var studyMode: WordStudyMode = .grid
+    @State private var studyMode: WordStudyMode = .flash
     @State private var showMeaning = true
     @State private var page = 1
     @State private var flashIndex = 0
@@ -1059,8 +1086,31 @@ struct EnglishWordView: View {
 
 // MARK: - 英语翻译
 
+private enum TranslationAnswerMode: String, CaseIterable, Identifiable {
+    case handwriting
+    case typing
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .handwriting: "手写板"
+        case .typing: "输入框"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .handwriting: "pencil.tip"
+        case .typing: "keyboard"
+        }
+    }
+}
+
 struct EnglishTranslationView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @AppStorage("cc.translationAnswerMode") private var answerModeRaw = TranslationAnswerMode.handwriting.rawValue
 
     let directoryId: Int
     let title: String
@@ -1071,7 +1121,9 @@ struct EnglishTranslationView: View {
     @State private var showResult = false
     @State private var copied = false
     @State private var translationCanvas = PKCanvasView()
+    @State private var hasHandwrittenAnswer = false
     @State private var translationDrawings: [Int: PKDrawing] = [:]
+    @State private var showAnswerModeSettings = false
     @State private var showAddSheet = false
     @State private var showDeleteConfirmation = false
     @State private var newContent = ""
@@ -1115,6 +1167,9 @@ struct EnglishTranslationView: View {
         .sheet(isPresented: $showAddSheet) {
             addTranslationSheet
         }
+        .sheet(isPresented: $showAnswerModeSettings) {
+            answerModeSettingsSheet
+        }
         .alert("删除这道翻译题？", isPresented: $showDeleteConfirmation) {
             Button("删除", role: .destructive, action: deleteCurrentItem)
             Button("取消", role: .cancel) {}
@@ -1155,6 +1210,15 @@ struct EnglishTranslationView: View {
             .accessibilityLabel("下一题")
 
             Spacer(minLength: 4)
+
+            Button {
+                showAnswerModeSettings = true
+            } label: {
+                Image(systemName: "gearshape")
+                    .frame(width: 30, height: 30)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("翻译作答设置")
 
             Button {
                 prepareAddSheet()
@@ -1207,6 +1271,14 @@ struct EnglishTranslationView: View {
                 .foregroundStyle(CCTheme.textMain)
                 .lineSpacing(7)
                 .textSelection(.enabled)
+
+            if let source = item.source?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !source.isEmpty {
+                Label("来源：\(source)", systemImage: "doc.text")
+                    .font(.footnote)
+                    .foregroundStyle(CCTheme.textSub)
+                    .textSelection(.enabled)
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1219,36 +1291,40 @@ struct EnglishTranslationView: View {
 
     private func answerCard(_ item: EnglishTranslationItem) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Label("手写板", systemImage: "pencil.tip")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(CCTheme.textSub)
-                    Spacer()
-                    Button {
-                        translationCanvas.undoManager?.undo()
-                    } label: {
-                        Image(systemName: "arrow.uturn.backward")
-                            .frame(width: 28, height: 28)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("撤销翻译手写笔迹")
-
-                    Button(role: .destructive) {
-                        translationCanvas.drawing = PKDrawing()
-                        if let item = currentItem {
-                            translationDrawings[item.id] = PKDrawing()
+            if answerMode == .handwriting {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Label("手写板", systemImage: "pencil.tip")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(CCTheme.textSub)
+                        Spacer()
+                        Button {
+                            translationCanvas.undoManager?.undo()
+                        } label: {
+                            Image(systemName: "arrow.uturn.backward")
+                                .frame(width: 28, height: 28)
                         }
-                    } label: {
-                        Image(systemName: "trash")
-                            .frame(width: 28, height: 28)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("清空翻译手写笔迹")
-                }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("撤销翻译手写笔迹")
 
-                MaterialPencilCanvas(canvasView: translationCanvas)
-                    .frame(height: 220)
+                        Button(role: .destructive) {
+                            translationCanvas.drawing = PKDrawing()
+                            hasHandwrittenAnswer = false
+                            if let item = currentItem {
+                                translationDrawings[item.id] = PKDrawing()
+                            }
+                        } label: {
+                            Image(systemName: "trash")
+                                .frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("清空翻译手写笔迹")
+                    }
+
+                    MaterialPencilCanvas(canvasView: translationCanvas) { drawing in
+                        hasHandwrittenAnswer = !drawing.strokes.isEmpty
+                    }
+                    .frame(height: translationCanvasHeight)
                     .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
                     .overlay {
                         RoundedRectangle(cornerRadius: 8)
@@ -1256,29 +1332,36 @@ struct EnglishTranslationView: View {
                     }
                     .allowsHitTesting(!showResult)
                     .opacity(showResult ? 0.55 : 1)
-            }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("输入框", systemImage: "keyboard")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CCTheme.textSub)
 
-            ZStack(alignment: .topLeading) {
-                TextEditor(text: $userAnswer)
-                    .font(.body)
-                    .scrollContentBackground(.hidden)
-                    .padding(8)
-                    .frame(minHeight: 150)
-                    .background(Color(uiColor: .secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(CCTheme.border, lineWidth: 1)
+                    ZStack(alignment: .topLeading) {
+                        TextEditor(text: $userAnswer)
+                            .font(.body)
+                            .scrollContentBackground(.hidden)
+                            .padding(8)
+                            .frame(minHeight: 180)
+                            .background(Color(uiColor: .secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .strokeBorder(CCTheme.border, lineWidth: 1)
+                            }
+                            .disabled(showResult)
+
+                        if userAnswer.isEmpty {
+                            Text("输入中文译文")
+                                .font(.body)
+                                .foregroundStyle(.tertiary)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 17)
+                                .allowsHitTesting(false)
+                        }
                     }
-                    .disabled(showResult)
-
-                if userAnswer.isEmpty {
-                    Text("输入中文译文")
-                        .font(.body)
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 17)
-                        .allowsHitTesting(false)
                 }
             }
 
@@ -1300,7 +1383,7 @@ struct EnglishTranslationView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(CCTheme.accent)
-                    .disabled(userAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(!hasAnswerForCurrentMode)
                 }
 
                 if showResult {
@@ -1329,18 +1412,20 @@ struct EnglishTranslationView: View {
                         .textSelection(.enabled)
                 }
 
-                Label(
-                    normalized(userAnswer) == normalized(item.answer)
-                        ? "与标准答案一致"
-                        : "请对照标准答案检查表达",
-                    systemImage: normalized(userAnswer) == normalized(item.answer)
-                        ? "checkmark.seal.fill"
-                        : "text.magnifyingglass"
-                )
-                .font(.subheadline)
-                .foregroundStyle(
-                    normalized(userAnswer) == normalized(item.answer) ? CCTheme.good : CCTheme.textSub
-                )
+                if answerMode == .typing {
+                    Label(
+                        normalized(userAnswer) == normalized(item.answer)
+                            ? "与标准答案一致"
+                            : "请对照标准答案检查表达",
+                        systemImage: normalized(userAnswer) == normalized(item.answer)
+                            ? "checkmark.seal.fill"
+                            : "text.magnifyingglass"
+                    )
+                    .font(.subheadline)
+                    .foregroundStyle(
+                        normalized(userAnswer) == normalized(item.answer) ? CCTheme.good : CCTheme.textSub
+                    )
+                }
             }
         }
         .padding(16)
@@ -1349,6 +1434,57 @@ struct EnglishTranslationView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(CCTheme.border, lineWidth: 1)
+        }
+    }
+
+    private var answerModeSettingsSheet: some View {
+        NavigationStack {
+            Form {
+                Section("作答方式") {
+                    Picker("作答方式", selection: answerModeBinding) {
+                        ForEach(TranslationAnswerMode.allCases) { mode in
+                            Label(mode.title, systemImage: mode.icon).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+            .navigationTitle("翻译设置")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { showAnswerModeSettings = false }
+                }
+            }
+        }
+        .presentationDetents([.height(220)])
+        .tint(CCTheme.accent)
+    }
+
+    private var answerMode: TranslationAnswerMode {
+        TranslationAnswerMode(rawValue: answerModeRaw) ?? .handwriting
+    }
+
+    private var answerModeBinding: Binding<TranslationAnswerMode> {
+        Binding(
+            get: { answerMode },
+            set: { mode in
+                answerModeRaw = mode.rawValue
+                showResult = false
+            }
+        )
+    }
+
+    private var translationCanvasHeight: CGFloat {
+        horizontalSizeClass == .regular ? 420 : 340
+    }
+
+    private var hasAnswerForCurrentMode: Bool {
+        switch answerMode {
+        case .handwriting:
+            hasHandwrittenAnswer
+        case .typing:
+            !userAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
 
@@ -1405,6 +1541,7 @@ struct EnglishTranslationView: View {
         showResult = false
         if clearHandwriting {
             translationCanvas.drawing = PKDrawing()
+            hasHandwrittenAnswer = false
         }
     }
 
@@ -1416,9 +1553,12 @@ struct EnglishTranslationView: View {
     private func loadTranslationDrawingForCurrentItem() {
         guard let item = currentItem else {
             translationCanvas.drawing = PKDrawing()
+            hasHandwrittenAnswer = false
             return
         }
-        translationCanvas.drawing = translationDrawings[item.id] ?? PKDrawing()
+        let drawing = translationDrawings[item.id] ?? PKDrawing()
+        translationCanvas.drawing = drawing
+        hasHandwrittenAnswer = !drawing.strokes.isEmpty
     }
 
     private func aiTranslationPrompt(for item: EnglishTranslationItem) -> String {
